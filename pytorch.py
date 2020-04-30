@@ -9,6 +9,7 @@
 
 
 import torch
+from torch.autograd import Variable
 import torch.nn as nn
 import torch.utils.data as data
 import torchvision
@@ -43,81 +44,58 @@ test_loader = data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False
 # In[ ]:
 
 
-class SimpleNet(nn.Module):
+
 # TODO:define model
-    def __init__(self, in_dim, n_hidden_1, n_hidden_2, out_dim):
-        super(simpleNet, self).__init__()
-        self.layer1 = nn.Linear(in_dim, n_hidden_1)
-        self.layer2 = nn.Linear(n_hidden_1, n_hidden_2)
-        self.layer3 = nn.Linear(n_hidden_2, out_dim)
- 
+class SimpleNet(nn.Module):
+    def __init__(self):
+        super(SimpleNet, self).__init__()
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=5, padding=2),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.MaxPool2d(2))
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(16, 32, kernel_size=5, padding=2),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2))
+        self.fc = nn.Linear(7 * 7 * 32, 10)
     def forward(self, x):
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        return x
-
-model = SimpleNet(784,200,100,10)
-
+        out = self.conv1(x)
+        out = self.conv2(out)
+        out = out.view(out.size(0), -1)  # reshape
+        out = self.fc(out)
+        return out
+model = SimpleNet()
 # TODO:define loss function and optimiter
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(),0.03)
+optimizer = torch.optim.SGD(model.parameters(),0.03)
 
 # Next, we can start to train and evaluate!
 
-# In[ ]:
 
 
-# train and evaluate
 for epoch in range(NUM_EPOCHS):
-    for images, labels in tqdm(train_loader):
-        # TODO:forward + backward + optimize
-        img, label = iter(train_loader).next()
-        if torch.cuda.is_available():
-            img = Variable(img.view(img.size(0), -1)).cuda()
-            label = Variable(label).cuda()
-        else:
-            img = Variable(img.view(img.size(0), -1))
-            label = Variable(label)
-        #前向传播
-        out = model(img)
-        loss = criterion(out, label)
-        #反向传播
-        optimizer.zero_grad()#梯度归零
+    for i, (images, labels) in enumerate(train_loader):
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        optimizer.zero_grad()
         loss.backward()
-        optimizer.step()#更新参数
-        if(epoch + 1) % 100 == 0:
-            print('*'*10)
-            print('epoch{}'.format(epoch+1))
-            print('loss is {:.4f}'.format(loss.item()))
-    model.eval()
-    eval_loss = 0
-    eval_acc = 0
-    for data in test_loader:
-        img, label = data
-        img = img.view(img.size(0), -1)
-        if torch.cuda.is_available():
-            img = Variable(img).cuda()
-            label = Variable(label).cuda()
-        else:
-            img = Variable(img)
-            label = Variable(label)
-        out = model(img)
-        loss = criterion(out, label)
-        eval_loss += loss.item() * label.size(0)
-        _, pred = torch.max(out, 1)
-        num_correct = (pred == label).sum()
-        eval_acc += num_correct.item()
-    print('Test Loss:{:.6f}, Acc:{:.6f}'.format(eval_loss / (len(test_dataset)), eval_acc / (len(test_dataset))))
-        
-    # evaluate
-    # TODO:calculate the accuracy using traning and testing dataset
-    
-    
-    
-    
+        optimizer.step()
+    print('Epoch [%d/%d],  Accuracy: %.4f'% (epoch + 1, NUM_EPOCHS, 1-loss.item()))
+ 
+# Save the Trained Model
+torch.save(model.state_dict(), 'model.pkl')
 
 
-# #### Q5:
-# Please print the training and testing accuracy.
+correct=0.00
+total=0.00
+for data in test_loader:
+    images,labels=data
+    outputs=model(Variable(images))
+    _,predicted=torch.max(outputs.data,1)
+    total+=labels.size(0)
+    correct+=(predicted==labels).sum()
+print('Accuracy of test=%.4f'% (correct/total))
+   
